@@ -28,11 +28,15 @@ class Line
     @bytes=Array.new(nb_bytes){0}
   end
 
-  def get byte_id
+  def read byte_id
     if byte_id >= @nb_bytes
       raise "ERROR : max number of bytes per line is #{@nb_bytes}. Asked byte #{byte_id}"
     end
     @bytes[byte_id]
+  end
+
+  def write byte_id,byte
+    @bytes[byte_id]=byte
   end
 end
 
@@ -49,7 +53,7 @@ class DirectMappedCache
     @offset_mask=2**@nb_bits_offset-1
   end
 
-  def access_to ram
+  def access_to memory
     @mem=memory
   end
 
@@ -82,9 +86,11 @@ class DirectMappedCache
   #=============================================================================
   def load_line addr,index
     puts "reloading line at index #{index}"
-    base_addr=addr & @offset_mask
-    @nb_bytes.each do |byte_id| #physically, via bus burst.
-      @lines[index].bytes[byte_id]=@mem[addr+byte_id]
+    base_addr=addr & ~@offset_mask # ~ = compl. à 1
+    @nb_bytes.times do |byte_id| #physically, via bus burst.
+      line=@lines[index]
+      line.bytes[byte_id]=@mem.read(addr+byte_id)
+      line.valid=true
     end
     @time_to_process=10
   end
@@ -101,7 +107,7 @@ class DirectMappedCache
     addr_line=(addr & index_mask) >> @nb_bits_offset
     offset=addr & @offset_mask
     @lines[addr_line].bytes[offset]=byte
-    @data[addr]=byte # write-through le masque assure écriture d'un octet seulement
+    @mem.write(addr,byte) # write-through le masque assure écriture d'un octet seulement
     @time_to_process=200 # !!!
   end
 end
@@ -141,7 +147,8 @@ class Program
 end
 
 ram=Memory.new(1024,random=true)
-cache=DirectMappedCache.new()
+cache=DirectMappedCache.new(8,4)
+cache.access_to ram
 prog=Program.new
-prog.access_to ram
+prog.access_to cache
 prog.run
